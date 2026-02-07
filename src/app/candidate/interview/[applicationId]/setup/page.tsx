@@ -2,6 +2,8 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { useUser } from '@clerk/nextjs';
+import * as faceapi from 'face-api.js';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -19,6 +21,7 @@ import {
 
 export default function RealInterviewSetupPage({ params }: { params: { applicationId: string } }) {
     const router = useRouter();
+    const { user } = useUser();
     const [currentStep, setCurrentStep] = useState(1);
     
     // State and Refs
@@ -27,6 +30,10 @@ export default function RealInterviewSetupPage({ params }: { params: { applicati
     const [microphoneWorking, setMicrophoneWorking] = useState(false);
     const [stream, setStream] = useState<MediaStream | null>(null);
     const [audioLevel, setAudioLevel] = useState(0);
+    const [faceVerified, setFaceVerified] = useState(false);
+    const [faceVerifying, setFaceVerifying] = useState(false);
+    const [faceError, setFaceError] = useState<string | null>(null);
+    const [faceModelsLoaded, setFaceModelsLoaded] = useState(false);
 
     const videoRef = useRef<HTMLVideoElement>(null);
     const audioContextRef = useRef<AudioContext | null>(null);
@@ -153,6 +160,82 @@ export default function RealInterviewSetupPage({ params }: { params: { applicati
         };
     }, []);
 
+    const loadFaceModels = async () => {
+        if (faceModelsLoaded) return;
+        await Promise.all([
+            faceapi.nets.tinyFaceDetector.loadFromUri("/models"),
+            faceapi.nets.faceLandmark68Net.loadFromUri("/models"),
+            faceapi.nets.faceRecognitionNet.loadFromUri("/models"),
+        ]);
+        setFaceModelsLoaded(true);
+    };
+
+    const handleFaceVerification = async () => {
+        if (!videoRef.current) {
+            setFaceError("Camera is not ready. Please allow camera access above first.");
+            return;
+        }
+        if (!user?.id) {
+            setFaceError("User not found. Please sign in again.");
+            return;
+        }
+        try {
+            setFaceVerifying(true);
+            setFaceError(null);
+            await loadFaceModels();
+
+            const detection = await faceapi
+                .detectSingleFace(videoRef.current, new faceapi.TinyFaceDetectorOptions())
+                .withFaceLandmarks()
+                .withFaceDescriptor();
+
+            if (!detection) {
+                setFaceError("No face detected. Please make sure your face is clearly visible in the frame.");
+                setFaceVerified(false);
+                return;
+            }
+
+            const embedding = Array.from(detection.descriptor);
+
+            const res = await fetch('/api/face/verify', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ 
+                    userId: user.id, 
+                    embedding,
+                    applicationId: params.applicationId 
+                }),
+            });
+
+            const data = await res.json();
+
+            if (!res.ok) {
+                setFaceError(data.error || "Face verification failed. Please try again.");
+                setFaceVerified(false);
+                return;
+            }
+
+            if (!data.match) {
+                if (data.needsRegistration) {
+                    setFaceError("No face registered. Please apply for a job first to register your face.");
+                } else {
+                    setFaceError(`Face verification failed. Please ensure good lighting and that you are the registered candidate. (Distance: ${data.distance?.toFixed(3) || 'N/A'})`);
+                }
+                setFaceVerified(false);
+                return;
+            }
+
+            setFaceVerified(true);
+            setFaceError(null);
+        } catch (error) {
+            console.error("Face verification error:", error);
+            setFaceError("An unexpected error occurred during face verification. Please try again.");
+            setFaceVerified(false);
+        } finally {
+            setFaceVerifying(false);
+        }
+    };
+
     const renderStep1 = () => (
         <Card className="w-full max-w-2xl mx-auto">
             <CardHeader>
@@ -248,11 +331,37 @@ export default function RealInterviewSetupPage({ params }: { params: { applicati
                                 </p>
                             </div>
                         )}
+
+                        <div className="space-y-2">
+                            <Label>Face Verification (Required)</Label>
+                            <p className="text-sm text-muted-foreground">
+                                Face verification is required before starting the interview to ensure identity authenticity.
+                            </p>
+                            <div className="flex items-center gap-3">
+                                <Button 
+                                    onClick={handleFaceVerification}
+                                    disabled={faceVerifying}
+                                >
+                                    {faceVerifying ? "Verifying..." : faceVerified ? "Re-verify Face" : "Verify Face"}
+                                </Button>
+                                {faceVerified && (
+                                    <span className="flex items-center text-sm text-green-600">
+                                        <CheckCircle className="h-4 w-4 mr-1" />
+                                        Face verified
+                                    </span>
+                                )}
+                            </div>
+                            {faceError && (
+                                <p className="text-sm text-red-600">
+                                    {faceError}
+                                </p>
+                            )}
+                        </div>
                         
                         <div className="flex justify-end">
-                            <Button 
-                                onClick={() => setCurrentStep(2)} 
-                                disabled={!webcamWorking || !microphoneWorking}
+                            <Button
+                                onClick={() => setCurrentStep(2)}
+                                disabled={!webcamWorking || !microphoneWorking || !faceVerified}
                             >
                                 Next: Instructions
                                 <ArrowRight className="h-4 w-4 ml-2" />

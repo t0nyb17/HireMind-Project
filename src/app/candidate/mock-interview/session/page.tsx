@@ -10,7 +10,6 @@ import { Input } from '@/components/ui/input';
 import { Mic, Phone, PhoneOff, Clock, User, Bot, Loader2, Square, Send, Shield, AlertTriangle } from 'lucide-react';
 import { AlertDialog, AlertDialogTrigger,AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogFooter } from "@/components/ui/alert-dialog";
 import { ViolationWarningModal } from '@/components/interview/violation-warning-modal';
-import { FullscreenOverlay } from '@/components/interview/fullscreen-overlay';
 import { requestMediaAccess, getDetailedErrorMessage } from '@/lib/media-utils';
 
 interface ConversationEntry {
@@ -29,17 +28,34 @@ export default function MockInterviewSession() {
   const [isRecording, setIsRecording] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [textInput, setTextInput] = useState("");
-  const [violations, setViolations] = useState(0);
-  const [showViolationModal, setShowViolationModal] = useState(false);
-  const [isPaused, setIsPaused] = useState(false);
-  const MAX_VIOLATIONS = 5;
+    const [violations, setViolations] = useState(0);
+    const [showViolationModal, setShowViolationModal] = useState(false);
+    const MAX_VIOLATIONS = 5;
   
   const videoRef = useRef<HTMLVideoElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const timerIntervalRef = useRef<NodeJS.Timeout | null>(null);
-  const scrollAreaRef = useRef<HTMLDivElement>(null);
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const audioChunksRef = useRef<Blob[]>([]);
+    const scrollAreaRef = useRef<HTMLDivElement>(null);
+    const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+    const audioChunksRef = useRef<Blob[]>([]);
+
+  // Define endInterview before useEffects that use it
+  const endInterview = useCallback((status?: string) => {
+    setIsInterviewStarted(false);
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      mediaRecorderRef.current.stop();
+    }
+    stream?.getTracks().forEach(track => track.stop());
+    if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
+    speechSynthesis.cancel();
+    
+    sessionStorage.setItem('lastInterviewJobRole', interviewData?.candidateInfo?.jobRole || '');
+    sessionStorage.setItem('lastInterviewConversation', JSON.stringify(conversation));
+    if (status) {
+      sessionStorage.setItem('lastInterviewStatus', status);
+    }
+    router.push(`/candidate/mock-interview/completed`);
+  }, [stream, conversation, interviewData, router]);
 
   useEffect(() => {
     const storedData = sessionStorage.getItem('mockInterviewData');
@@ -65,57 +81,14 @@ export default function MockInterviewSession() {
     scrollAreaRef.current?.scrollTo({ top: scrollAreaRef.current.scrollHeight, behavior: 'smooth' });
   }, [conversation]);
 
-  // Anti-cheating: Fullscreen enforcement
-  useEffect(() => {
-    if (!isInterviewStarted) return;
 
-    const handleFullscreenChange = () => {
-      const isFullscreen = !!(document.fullscreenElement || 
-          (document as any).webkitFullscreenElement || 
-          (document as any).mozFullScreenElement || 
-          (document as any).msFullscreenElement);
-      
-      if (!isFullscreen && isInterviewStarted) {
-        // User exited fullscreen - pause interview and show overlay
-        setIsPaused(true);
-        
-        setViolations(prev => {
-          const newViolations = prev + 1;
-          setShowViolationModal(true);
-          
-          if (newViolations >= MAX_VIOLATIONS) {
-            setTimeout(() => {
-              endInterview('Failed due to security violations');
-            }, 2000);
-          }
-          return newViolations;
-        });
-      } else if (isFullscreen && isPaused) {
-        // User re-entered fullscreen - resume interview
-        setIsPaused(false);
-        setShowViolationModal(false);
-      }
-    };
-
-    document.addEventListener('fullscreenchange', handleFullscreenChange);
-    document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
-    document.addEventListener('mozfullscreenchange', handleFullscreenChange);
-    document.addEventListener('MSFullscreenChange', handleFullscreenChange);
-
-    return () => {
-      document.removeEventListener('fullscreenchange', handleFullscreenChange);
-      document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
-      document.removeEventListener('mozfullscreenchange', handleFullscreenChange);
-      document.removeEventListener('MSFullscreenChange', handleFullscreenChange);
-    };
-  }, [isInterviewStarted, isPaused, endInterview]);
 
   // Anti-cheating: Visibility API (tab switching detection)
   useEffect(() => {
     if (!isInterviewStarted) return;
 
     const handleVisibilityChange = () => {
-      if (document.visibilityState === 'hidden' && isInterviewStarted && !isPaused) {
+      if (document.visibilityState === 'hidden' && isInterviewStarted) {
         setViolations(prev => {
           const newViolations = prev + 1;
           setShowViolationModal(true);
@@ -137,7 +110,7 @@ export default function MockInterviewSession() {
     return () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, [isInterviewStarted, isPaused, endInterview]);
+  }, [isInterviewStarted, endInterview]);
 
   // Anti-cheating: Disable cheat shortcuts
   useEffect(() => {
@@ -292,14 +265,6 @@ export default function MockInterviewSession() {
         videoRef.current.srcObject = mediaResult.stream;
       }
 
-      // Request fullscreen (this can fail but shouldn't block the interview)
-      try {
-        await requestFullscreen();
-      } catch (fullscreenError) {
-        console.warn('Fullscreen request failed, but continuing interview:', fullscreenError);
-        // Don't block interview if fullscreen fails
-      }
-
       // Start the interview
       getNextQuestion([]);
     } catch (error: any) {
@@ -315,26 +280,6 @@ export default function MockInterviewSession() {
     }
   };
 
-  const endInterview = useCallback((status?: string) => {
-    setIsInterviewStarted(false);
-    if (isRecording) mediaRecorderRef.current?.stop();
-    stream?.getTracks().forEach(track => track.stop());
-    if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
-    speechSynthesis.cancel();
-    
-    // Exit fullscreen if active
-    if (document.fullscreenElement) {
-      document.exitFullscreen().catch(() => {});
-    }
-    
-    sessionStorage.setItem('lastInterviewJobRole', interviewData?.candidateInfo?.jobRole || '');
-    sessionStorage.setItem('lastInterviewConversation', JSON.stringify(conversation));
-    if (status) {
-      sessionStorage.setItem('lastInterviewStatus', status);
-    }
-    router.push(`/candidate/mock-interview/completed`);
-  }, [isRecording, stream, conversation, interviewData, router]);
-  
   const handleSendTextAnswer = () => {
       if (!textInput.trim()) return;
       const newConversation = [...conversation, { role: 'user' as const, text: textInput }];
@@ -444,12 +389,11 @@ export default function MockInterviewSession() {
   const remainingWarnings = MAX_VIOLATIONS - violations;
 
   return (
-    <div 
-      ref={containerRef} 
+    <div
+      ref={containerRef}
       className="flex h-[calc(100vh-8rem)] w-full p-4 gap-4 bg-background"
       onContextMenu={(e) => e.preventDefault()}
     >
-      {isPaused && <FullscreenOverlay onRequestFullscreen={requestFullscreen} />}
       <ViolationWarningModal 
         open={showViolationModal} 
         violationCount={violations} 
@@ -466,7 +410,7 @@ export default function MockInterviewSession() {
             <Button size="lg" className="rounded-full w-48" onClick={startInterview}><Phone className="h-5 w-5 mr-2" />Start Interview</Button>
           ) : (
             <div className="flex items-center gap-4">
-              <Button size="lg" className={`rounded-full w-48 transition-colors ${isRecording ? 'bg-red-600 hover:bg-red-700' : 'bg-blue-600 hover:bg-blue-700'}`} onClick={handleToggleRecording} disabled={isAiTyping || isTranscribing || isPaused}>
+              <Button size="lg" className={`rounded-full w-48 transition-colors ${isRecording ? 'bg-red-600 hover:bg-red-700' : 'bg-blue-600 hover:bg-blue-700'}`} onClick={handleToggleRecording} disabled={isAiTyping || isTranscribing}>
                 {isRecording ? <Square className="h-5 w-5 mr-2" /> : <Mic className="h-5 w-5 mr-2" />}
                 {isRecording ? 'Stop Speaking' : 'Speak Answer'}
               </Button>
@@ -506,8 +450,8 @@ export default function MockInterviewSession() {
             </div>
           </ScrollArea>
           <div className="flex items-center gap-2 border-t pt-4">
-              <Input placeholder="Type your answer..." value={textInput} onChange={(e) => setTextInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSendTextAnswer()} disabled={!isInterviewStarted || isAiTyping || isRecording || isTranscribing || isPaused} />
-              <Button size="icon" onClick={handleSendTextAnswer} disabled={!isInterviewStarted || isAiTyping || isRecording || isTranscribing || isPaused || !textInput.trim()}><Send className="h-4 w-4" /></Button>
+              <Input placeholder="Type your answer..." value={textInput} onChange={(e) => setTextInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSendTextAnswer()} disabled={!isInterviewStarted || isAiTyping || isRecording || isTranscribing} />
+              <Button size="icon" onClick={handleSendTextAnswer} disabled={!isInterviewStarted || isAiTyping || isRecording || isTranscribing || !textInput.trim()}><Send className="h-4 w-4" /></Button>
           </div>
         </CardContent>
       </Card>

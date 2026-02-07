@@ -13,6 +13,7 @@ export async function POST(request: NextRequest) {
     const candidateName = formData.get('candidateName') as string;
     const candidateEmail = formData.get('candidateEmail') as string;
     const resumeFile = formData.get('resumeFile') as File;
+    const faceEmbedding = formData.get('faceEmbedding') as string | null;
 
     if (!jobId || !candidateName || !candidateEmail || !resumeFile) {
       return NextResponse.json({ success: false, error: 'Missing required fields' }, { status: 400 });
@@ -69,6 +70,8 @@ export async function POST(request: NextRequest) {
       resumeText: resumeText,
       atsScore: analysis.atsScore,
       atsAnalysis: analysis,
+      // Store face embedding if provided (null if not):
+      faceEmbedding: faceEmbedding ? JSON.parse(faceEmbedding) : null,
       status: 'Pending',
     });
 

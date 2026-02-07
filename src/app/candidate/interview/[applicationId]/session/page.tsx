@@ -10,7 +10,6 @@ import { Input } from '@/components/ui/input';
 import { Mic, Phone, PhoneOff, Clock, User, Bot, Loader2, Square, Send, Shield, AlertTriangle } from 'lucide-react';
 import { AlertDialog, AlertDialogTrigger,AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogFooter } from "@/components/ui/alert-dialog";
 import { ViolationWarningModal } from '@/components/interview/violation-warning-modal';
-import { FullscreenOverlay } from '@/components/interview/fullscreen-overlay';
 import { requestMediaAccess, getDetailedErrorMessage } from '@/lib/media-utils';
 
 interface ConversationEntry {
@@ -31,7 +30,6 @@ export default function RealInterviewSessionPage({ params }: { params: { applica
     const [textInput, setTextInput] = useState("");
     const [violations, setViolations] = useState(0);
     const [showViolationModal, setShowViolationModal] = useState(false);
-    const [isPaused, setIsPaused] = useState(false);
     const MAX_VIOLATIONS = 5;
 
     const videoRef = useRef<HTMLVideoElement>(null);
@@ -64,11 +62,6 @@ export default function RealInterviewSessionPage({ params }: { params: { applica
         if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
         speechSynthesis.cancel();
         
-        // Exit fullscreen if active
-        if (document.fullscreenElement) {
-            document.exitFullscreen().catch(() => {});
-        }
-        
         // Defensive: if this was invoked as an event handler, avoid serializing the event
         const finalStatus = typeof status === 'string' ? status : undefined;
         const serializableConversation = conversation.map(c => ({ role: c.role, text: String(c.text) }));
@@ -92,57 +85,14 @@ export default function RealInterviewSessionPage({ params }: { params: { applica
         scrollAreaRef.current?.scrollTo({ top: scrollAreaRef.current.scrollHeight, behavior: 'smooth' });
     }, [conversation]);
 
-    // Anti-cheating: Fullscreen enforcement
-    useEffect(() => {
-        if (!isInterviewStarted) return;
 
-        const handleFullscreenChange = () => {
-            const isFullscreen = !!(document.fullscreenElement || 
-                (document as any).webkitFullscreenElement || 
-                (document as any).mozFullScreenElement || 
-                (document as any).msFullscreenElement);
-            
-            if (!isFullscreen && isInterviewStarted) {
-                // User exited fullscreen - pause interview and show overlay
-                setIsPaused(true);
-                
-                setViolations(prev => {
-                    const newViolations = prev + 1;
-                    setShowViolationModal(true);
-                    
-                    if (newViolations >= MAX_VIOLATIONS) {
-                        setTimeout(() => {
-                            endInterview('Failed due to security violations');
-                        }, 2000);
-                    }
-                    return newViolations;
-                });
-            } else if (isFullscreen && isPaused) {
-                // User re-entered fullscreen - resume interview
-                setIsPaused(false);
-                setShowViolationModal(false);
-            }
-        };
-
-        document.addEventListener('fullscreenchange', handleFullscreenChange);
-        document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
-        document.addEventListener('mozfullscreenchange', handleFullscreenChange);
-        document.addEventListener('MSFullscreenChange', handleFullscreenChange);
-
-        return () => {
-            document.removeEventListener('fullscreenchange', handleFullscreenChange);
-            document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
-            document.removeEventListener('mozfullscreenchange', handleFullscreenChange);
-            document.removeEventListener('MSFullscreenChange', handleFullscreenChange);
-        };
-    }, [isInterviewStarted, isPaused, endInterview]);
 
     // Anti-cheating: Visibility API (tab switching detection)
     useEffect(() => {
         if (!isInterviewStarted) return;
 
         const handleVisibilityChange = () => {
-            if (document.visibilityState === 'hidden' && isInterviewStarted && !isPaused) {
+            if (document.visibilityState === 'hidden' && isInterviewStarted) {
                 setViolations(prev => {
                     const newViolations = prev + 1;
                     setShowViolationModal(true);
@@ -164,7 +114,7 @@ export default function RealInterviewSessionPage({ params }: { params: { applica
         return () => {
             document.removeEventListener('visibilitychange', handleVisibilityChange);
         };
-    }, [isInterviewStarted, isPaused, endInterview]);
+    }, [isInterviewStarted, endInterview]);
 
     // Anti-cheating: Disable cheat shortcuts
     useEffect(() => {
@@ -313,14 +263,6 @@ export default function RealInterviewSessionPage({ params }: { params: { applica
                 videoRef.current.srcObject = mediaResult.stream;
             }
 
-            // Request fullscreen (this can fail but shouldn't block the interview)
-            try {
-                await requestFullscreen();
-            } catch (fullscreenError) {
-                console.warn('Fullscreen request failed, but continuing interview:', fullscreenError);
-                // Don't block interview if fullscreen fails
-            }
-
             // Mark interview as started in backend
             try {
                 await fetch('/api/applications/start-interview', { 
@@ -459,12 +401,11 @@ export default function RealInterviewSessionPage({ params }: { params: { applica
     const remainingWarnings = MAX_VIOLATIONS - violations;
 
     return (
-        <div 
-            ref={containerRef} 
+        <div
+            ref={containerRef}
             className="flex h-[calc(100vh-8rem)] w-full p-4 gap-4 bg-background"
             onContextMenu={(e) => e.preventDefault()}
         >
-            {isPaused && <FullscreenOverlay onRequestFullscreen={requestFullscreen} />}
             <ViolationWarningModal 
                 open={showViolationModal} 
                 violationCount={violations} 
@@ -485,7 +426,7 @@ export default function RealInterviewSessionPage({ params }: { params: { applica
                                 size="lg"
                                 className={`rounded-full w-48 transition-colors ${isRecording ? 'bg-red-600 hover:bg-red-700' : 'bg-blue-600 hover:bg-blue-700'}`}
                                 onClick={handleToggleRecording}
-                                disabled={isAiTyping || isTranscribing || isPaused}
+                                disabled={isAiTyping || isTranscribing}
                             >
                                 {isRecording ? <Square className="h-5 w-5 mr-2" /> : <Mic className="h-5 w-5 mr-2" />}
                                 {isRecording ? 'Stop Speaking' : 'Speak Answer'}
@@ -526,8 +467,8 @@ export default function RealInterviewSessionPage({ params }: { params: { applica
                         </div>
                     </ScrollArea>
                     <div className="flex items-center gap-2 border-t pt-4">
-                        <Input placeholder="Type your answer..." value={textInput} onChange={(e) => setTextInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSendTextAnswer()} disabled={!isInterviewStarted || isAiTyping || isRecording || isTranscribing || isPaused} />
-                        <Button size="icon" onClick={handleSendTextAnswer} disabled={!isInterviewStarted || isAiTyping || isRecording || isTranscribing || isPaused || !textInput.trim()}><Send className="h-4 w-4" /></Button>
+                        <Input placeholder="Type your answer..." value={textInput} onChange={(e) => setTextInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSendTextAnswer()} disabled={!isInterviewStarted || isAiTyping || isRecording || isTranscribing} />
+                        <Button size="icon" onClick={handleSendTextAnswer} disabled={!isInterviewStarted || isAiTyping || isRecording || isTranscribing || !textInput.trim()}><Send className="h-4 w-4" /></Button>
                     </div>
                 </CardContent>
             </Card>

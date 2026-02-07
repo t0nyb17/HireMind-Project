@@ -21,6 +21,7 @@ const ApplicationSchema = new mongoose.Schema({
     type: Object,
     required: false,
   },
+  faceEmbedding: { type: [Number], required: false }, // Face verification embedding
 }, {
   timestamps: true,
 });

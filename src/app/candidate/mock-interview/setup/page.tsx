@@ -5,6 +5,8 @@ import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import * as z from 'zod'
 import { useRouter } from 'next/navigation'
+import { useUser } from '@clerk/nextjs'
+import * as faceapi from 'face-api.js'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -68,7 +70,12 @@ interface OnboardingData {
 
 export default function MockInterviewOnboarding() {
   const router = useRouter()
+  const { user } = useUser()
   const [currentStep, setCurrentStep] = useState(1)
+  const [faceVerified, setFaceVerified] = useState(false)
+  const [faceVerifying, setFaceVerifying] = useState(false)
+  const [faceError, setFaceError] = useState<string | null>(null)
+  const [faceModelsLoaded, setFaceModelsLoaded] = useState(false)
   const [onboardingData, setOnboardingData] = useState<OnboardingData>({
     candidateInfo: {
       name: '',
@@ -214,6 +221,106 @@ export default function MockInterviewOnboarding() {
     }))
     setCurrentStep(2)
   }
+
+  // Load face-api.js models
+  useEffect(() => {
+    if (onboardingData.permissionsGranted && videoRef.current && !faceModelsLoaded) {
+      const loadModels = async () => {
+        try {
+          await Promise.all([
+            faceapi.nets.tinyFaceDetector.loadFromUri("/models"),
+            faceapi.nets.faceLandmark68Net.loadFromUri("/models"),
+            faceapi.nets.faceRecognitionNet.loadFromUri("/models"),
+          ]);
+          setFaceModelsLoaded(true);
+        } catch (error) {
+          console.error('Failed to load face models:', error);
+          setFaceError('Failed to load face verification models');
+        }
+      };
+      loadModels();
+    }
+  }, [onboardingData.permissionsGranted, faceModelsLoaded]);
+
+  // Handle face verification
+  const handleFaceVerification = async () => {
+    if (!videoRef.current || !user?.id || !faceModelsLoaded) {
+      setFaceError('Camera or user not available');
+      return;
+    }
+
+    setFaceVerifying(true);
+    setFaceError(null);
+
+    try {
+      const detection = await faceapi
+        .detectSingleFace(videoRef.current, new faceapi.TinyFaceDetectorOptions())
+        .withFaceLandmarks()
+        .withFaceDescriptor();
+
+      if (!detection) {
+        setFaceError('No face detected. Please make sure your face is clearly visible.');
+        setFaceVerifying(false);
+        return;
+      }
+
+      const embedding = Array.from(detection.descriptor);
+
+      // First try to verify
+      let response = await fetch('/api/face/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: user.id,
+          embedding,
+        }),
+      });
+
+      let result = await response.json();
+
+      // If no face is registered, register it first
+      if (result.needsRegistration) {
+        const registerResponse = await fetch('/api/face/register', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            userId: user.id,
+            embedding,
+          }),
+        });
+
+        const registerResult = await registerResponse.json();
+
+        if (registerResponse.ok && registerResult.success) {
+          // After registration, verify again
+          response = await fetch('/api/face/verify', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              userId: user.id,
+              embedding,
+            }),
+          });
+          result = await response.json();
+        } else {
+          setFaceError('Failed to register face. Please try again.');
+          return;
+        }
+      }
+
+      if (result.match) {
+        setFaceVerified(true);
+        setFaceError(null);
+      } else {
+        setFaceError(result.error || `Face verification failed. Please try again. (Distance: ${result.distance?.toFixed(3) || 'N/A'})`);
+      }
+    } catch (error: any) {
+      console.error('Face verification error:', error);
+      setFaceError('Face verification failed. Please try again.');
+    } finally {
+      setFaceVerifying(false);
+    }
+  };
 
   // Handle step 2 completion
   const handleStep2Complete = () => {
@@ -462,6 +569,38 @@ useEffect(() => {
               </div>
             </div>
 
+            {/* Face Verification */}
+            <div className="space-y-2">
+              <Label>Face Verification (Required)</Label>
+              <div className="p-4 bg-muted/50 rounded-lg space-y-3">
+                {!faceModelsLoaded ? (
+                  <p className="text-sm text-muted-foreground">Loading face verification models...</p>
+                ) : faceVerified ? (
+                  <div className="flex items-center gap-2 text-green-600">
+                    <CheckCircle className="h-4 w-4" />
+                    <span className="text-sm font-semibold">Face verified successfully!</span>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    <p className="text-sm text-muted-foreground">
+                      Face verification is required before starting the interview to ensure identity authenticity.
+                    </p>
+                    {faceError && (
+                      <p className="text-sm text-red-600">{faceError}</p>
+                    )}
+                    <Button
+                      onClick={handleFaceVerification}
+                      disabled={faceVerifying}
+                      size="sm"
+                      className="w-full"
+                    >
+                      {faceVerifying ? 'Verifying...' : 'Verify Face'}
+                    </Button>
+                  </div>
+                )}
+              </div>
+            </div>
+
             {/* Status Summary */}
             <div className="p-4 bg-muted/50 rounded-lg">
               <h4 className="font-semibold mb-2">Setup Status</h4>
@@ -490,6 +629,18 @@ useEffect(() => {
                     {onboardingData.microphoneWorking ? 'Working' : 'Not working'}
                   </span>
                 </div>
+                <div className="flex items-center gap-2">
+                  <User className="h-4 w-4" />
+                  <span className="text-sm">Face Verification (Required):</span>
+                  {faceVerified ? (
+                    <CheckCircle className="h-4 w-4 text-green-500" />
+                  ) : (
+                    <XCircle className="h-4 w-4 text-red-500" />
+                  )}
+                  <span className="text-sm text-muted-foreground">
+                    {faceVerified ? 'Verified' : 'Required'}
+                  </span>
+                </div>
               </div>
             </div>
 
@@ -504,7 +655,7 @@ useEffect(() => {
               </Button>
               <Button
                 onClick={handleStep2Complete}
-                disabled={!onboardingData.webcamWorking || !onboardingData.microphoneWorking}
+                disabled={!onboardingData.webcamWorking || !onboardingData.microphoneWorking || !faceVerified}
                 className="flex items-center gap-2"
               >
                 Next: Instructions

@@ -1,5 +1,6 @@
 "use client"
 
+import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -21,6 +22,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import type { Job } from '@/components/jobs/types';
 import { Loader2 } from 'lucide-react';
+import FaceVerification from './face-verification';
 
 const applySchema = z.object({
   candidateName: z.string().min(1, 'Your name is required'),
@@ -56,6 +58,9 @@ const postApplication = async (formData: FormData) => {
 };
 
 export default function ApplyForm({ job, onClose }: ApplyFormProps) {
+    const [faceEmbedding, setFaceEmbedding] = useState<number[] | null>(null);
+    const [faceVerified, setFaceVerified] = useState(false);
+
     const router = useRouter();
     const {
         register,
@@ -74,17 +79,30 @@ export default function ApplyForm({ job, onClose }: ApplyFormProps) {
     });
 
     const onSubmit = (values: ApplyFormValues) => {
+        if (!faceVerified || !faceEmbedding) {
+            alert('Please complete face verification.');
+            return;
+        }
         const formData = new FormData();
         formData.append('jobId', job._id);
         formData.append('candidateName', values.candidateName);
         formData.append('candidateEmail', values.candidateEmail);
         formData.append('resumeFile', values.resumeFile[0]);
+        // Include face embedding in JSON string
+        formData.append('faceEmbedding', JSON.stringify(faceEmbedding));
         mutation.mutate(formData);
     };
 
     return (
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-6 p-6">
-             <div>
+            {/* Face Verification step */}
+            <FaceVerification 
+                onVerified={(embedding) => {
+                    setFaceEmbedding(embedding);
+                    setFaceVerified(!!embedding);
+                }}
+            />
+            <div>
                 <h2 className="text-2xl font-bold">Apply for {job.title}</h2>
                 <p className="text-muted-foreground">{job.company}</p>
             </div>
