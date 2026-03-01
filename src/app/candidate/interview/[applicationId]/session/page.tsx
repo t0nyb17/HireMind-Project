@@ -432,7 +432,7 @@ export default function RealInterviewSessionPage({ params }: { params: { applica
                                 {isRecording ? 'Stop Speaking' : 'Speak Answer'}
                             </Button>
                             <div className="flex items-center gap-2 text-lg font-semibold font-mono"><Clock className="h-5 w-5 text-primary" />{formatTime(timeRemaining)}</div>
-                            <AlertDialog><AlertDialogTrigger asChild><Button size="icon" variant="destructive" className="rounded-full"><PhoneOff className="h-5 w-5" /></Button></AlertDialogTrigger><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Are you sure?</AlertDialogTitle></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel><AlertDialogAction onClick={endInterview}>End Interview</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>
+                            <AlertDialog><AlertDialogTrigger asChild><Button size="icon" variant="destructive" className="rounded-full"><PhoneOff className="h-5 w-5" /></Button></AlertDialogTrigger><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Are you sure?</AlertDialogTitle></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel><AlertDialogAction onClick={() => endInterview()}>End Interview</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>
                         </div>
                     )}
                 </div>
