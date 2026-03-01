@@ -19,6 +19,9 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: `localStorage.removeItem('theme')` }} />
+      </head>
       <body className={font.className}>
         <ThemeProvider
           attribute="class"

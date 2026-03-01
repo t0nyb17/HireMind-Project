@@ -50,7 +50,7 @@ export async function GET(request: NextRequest) {
         if (applicationIds.length > 0) {
             const reports = await InterviewReport.find({ 
                 applicationId: { $in: applicationIds } 
-            }).lean() as IInterviewReport[];
+            }).lean() as unknown as IInterviewReport[];
             
             reports.forEach((report: IInterviewReport) => {
                 reportsMap.set(String(report.applicationId), report);

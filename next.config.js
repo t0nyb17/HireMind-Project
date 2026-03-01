@@ -20,6 +20,12 @@ const nextConfig = {
       // Exclude canvas dependency that pdf-parse tries to use
       config.resolve.alias.canvas = false
       config.resolve.alias.encoding = false
+    } else {
+      // face-api.js references Node.js built-ins; stub them out for the browser
+      config.resolve.fallback = {
+        ...config.resolve.fallback,
+        fs: false,
+      }
     }
     
     // Ignore node: protocol imports warnings
