@@ -27,7 +27,7 @@ export function ViolationWarningModal({ open, violationCount, maxViolations, onC
   
   return (
     <AlertDialog open={open}>
-      <AlertDialogContent className="max-w-md mx-auto" onEscapeKeyDown={(e) => e.preventDefault()} onPointerDownOutside={(e) => e.preventDefault()}>
+      <AlertDialogContent className="max-w-md mx-auto" onEscapeKeyDown={(e) => e.preventDefault()}>
         <div className="w-full flex items-center justify-center">
         {/* Close button - only show if not final violation */}
         {remainingWarnings > 0 && onClose && (
