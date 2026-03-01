@@ -1,13 +1,15 @@
 "use client"
 
 import Link from 'next/link'
+import Image from 'next/image'
 import { Button } from '@/components/ui/button'
-import { Home, Briefcase, FileText, Brain, Video, Menu, X, LogOut } from 'lucide-react'
+import { Home, Briefcase, FileText, Brain, Video, Menu, X, LogOut, ClipboardList } from 'lucide-react'
 import { useState, Suspense } from 'react'
-import { ThemeToggle } from '@/components/theme-toggle' 
+import { ThemeToggle } from '@/components/theme-toggle'
 import { AuthWrapper } from '@/components/auth-wrapper'
 import { UserButton } from '@clerk/nextjs'
 import { Loader2 } from 'lucide-react'
+import logo from '../../../logo.png'
 
 export default function CandidateLayout({
   children,
@@ -26,13 +28,13 @@ export default function CandidateLayout({
             {sidebarOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
           </Button>
 
-          <Link href="/">
-          <div className="flex items-center space-x-2 px-4">
-            <div className="h-8 w-8 rounded-lg bg-primary flex items-center justify-center">
-              <span className="text-primary-foreground font-bold text-sm">H</span>
-            </div>
-            <span className="font-semibold text-lg">Hiremind</span>
-          </div>
+          <Link href="/" className="flex items-center px-4">
+            <Image
+              src={logo}
+              alt="HM"
+              height={36}
+              className="block w-auto mix-blend-multiply dark:invert dark:mix-blend-screen"
+            />
           </Link>
 
           {/* Right side items */}
@@ -99,6 +101,13 @@ export default function CandidateLayout({
                 <Button variant="ghost" className="w-full justify-start">
                   <Brain className="h-4 w-4 mr-3" />
                   Resume Analysis
+                </Button>
+              </Link>
+
+              <Link href="/candidate/aptitude">
+                <Button variant="ghost" className="w-full justify-start">
+                  <ClipboardList className="h-4 w-4 mr-3" />
+                  Aptitude Tests
                 </Button>
               </Link>
               

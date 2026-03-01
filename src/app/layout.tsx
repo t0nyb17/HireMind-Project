@@ -1,14 +1,15 @@
 import type { Metadata } from 'next'
-import { Inter } from 'next/font/google'
+import { DM_Sans } from 'next/font/google'
 import './globals.css'
 import { Providers } from './providers'
 import { ThemeProvider } from '@/components/theme-provider'
 
-const inter = Inter({ subsets: ['latin'] })
+const font = DM_Sans({ subsets: ['latin'] })
 
 export const metadata: Metadata = {
   title: 'Hiremind - AI-Powered Interview Automation',
-  description: 'Advanced AI-powered interview automation platform designed to modernize and streamline the technical hiring process.',
+  description:
+    'Advanced AI-powered interview automation platform designed to modernize and streamline the technical hiring process.',
 }
 
 export default function RootLayout({
@@ -18,16 +19,14 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body className={inter.className}>
+      <body className={font.className}>
         <ThemeProvider
           attribute="class"
-          defaultTheme="dark"
+          defaultTheme="light"
           enableSystem={false}
           disableTransitionOnChange
         >
-          <Providers>
-            {children}
-          </Providers>
+          <Providers>{children}</Providers>
         </ThemeProvider>
       </body>
     </html>

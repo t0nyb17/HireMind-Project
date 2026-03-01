@@ -130,13 +130,14 @@
 
 
 import Link from 'next/link'
+import Image from 'next/image'
 import { Button } from '@/components/ui/button'
-import { 
-  Home, 
-  Briefcase, 
-  FileText, 
-  Users, 
-  Settings, 
+import {
+  Home,
+  Briefcase,
+  FileText,
+  Users,
+  Settings,
   Bell,
   Search,
   User
@@ -146,6 +147,7 @@ import { ThemeToggle } from '@/components/theme-toggle'
 import { AuthWrapper } from '@/components/auth-wrapper'
 import { UserButton } from '@clerk/nextjs'
 import { Loader2 } from 'lucide-react'
+import logo from '../../../logo.png'
 
 export default function RecruiterLayout({
   children,
@@ -159,13 +161,13 @@ export default function RecruiterLayout({
       <header className="border-b bg-card sticky top-0 z-50">
         <div className="flex items-center justify-between px-4 py-3 h-16">
           <div className="flex items-center space-x-4">
-            <Link href="/">
-              <div className="flex items-center space-x-2">
-                <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
-                  <span className="text-primary-foreground font-bold text-lg">H</span>
-                </div>
-                <h1 className="text-xl font-bold">Hiremind</h1>
-              </div>
+            <Link href="/" className="flex items-center">
+              <Image
+                src={logo}
+                alt="HM"
+                height={36}
+                className="block w-auto mix-blend-multiply dark:invert dark:mix-blend-screen"
+              />
             </Link>
           </div>
           
